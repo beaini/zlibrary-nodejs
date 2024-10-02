@@ -1,27 +1,40 @@
 // src/libasync.js
 
-const { GET_request, POST_request, HEAD_request } = require("./util");
+const { GET_request, POST_request } = require("./util");
 const {
   EmptyQueryError,
   ProxyNotMatchError,
   NoProfileError,
   NoDomainError,
   NoIdError,
+  ParseError, // Added missing import
 } = require("./exception");
 const logger = require("./logger");
 const ZlibProfile = require("./profile");
 const { SearchPaginator } = require("./abstract");
 const BookItem = require("./bookItem");
-const { Extension, Language } = require("./const");
-const config = require("./config"); // Import centralized config
+const config = require("./config");
 
+/**
+ * Class representing the asynchronous interface to ZLibrary.
+ */
 class AsyncZlib {
+  /**
+   * Create an AsyncZlib instance.
+   * @param {Object} options - Configuration options.
+   * @param {boolean} [options.onion=false] - Use onion domains.
+   * @param {string[]} [options.proxyList=[]] - List of proxies.
+   * @param {boolean} [options.disableSemaphore=false] - Disable semaphore.
+   * @param {Object} [options.customDomains={}] - Custom domains.
+   * @throws {ProxyNotMatchError} If proxyList is not an array.
+   * @throws {Error} If onion is true and proxyList is empty.
+   */
   constructor(options = {}) {
     const {
       onion = false,
       proxyList = [],
       disableSemaphore = false,
-      customDomains = {}, // Allow custom domains via constructor
+      customDomains = {},
     } = options;
 
     if (proxyList && !Array.isArray(proxyList)) {
@@ -56,7 +69,11 @@ class AsyncZlib {
   }
 
   /**
-   * Override the _r method to automatically parse JSON responses if needed.
+   * Internal method to make a GET request.
+   * @param {string} url - The URL to request.
+   * @param {boolean} [expectJson=false] - Whether to parse the response as JSON.
+   * @returns {Promise<any>} The response data.
+   * @throws {ParseError} If JSON parsing fails.
    */
   async _r(url, expectJson = false) {
     const response = await GET_request(url, this.cookies, this.proxyList);
@@ -70,6 +87,13 @@ class AsyncZlib {
     return response;
   }
 
+  /**
+   * Login to ZLibrary.
+   * @param {string} email - The email address.
+   * @param {string} password - The password.
+   * @returns {Promise<ZlibProfile>} The user profile.
+   * @throws {Error} If no working domain is found.
+   */
   async login(email, password) {
     const data = new URLSearchParams({
       isModal: "True",
@@ -132,11 +156,27 @@ class AsyncZlib {
     return this.profile;
   }
 
+  /**
+   * Logout from ZLibrary.
+   */
   async logout() {
     this.cookies = null;
     this.profile = null;
   }
 
+  /**
+   * Search for books.
+   * @param {string} q - The search query.
+   * @param {boolean} [exact=false] - Exact match.
+   * @param {number|null} [fromYear=null] - Start year.
+   * @param {number|null} [toYear=null] - End year.
+   * @param {string[]} [lang=[]] - List of languages.
+   * @param {string[]} [extensions=[]] - List of extensions.
+   * @param {number} [count=10] - Number of results per page.
+   * @returns {Promise<SearchPaginator>} The paginator.
+   * @throws {NoProfileError} If not logged in.
+   * @throws {EmptyQueryError} If query is empty.
+   */
   async search(
     q = "",
     exact = false,
@@ -157,15 +197,17 @@ class AsyncZlib {
 
     if (lang && Array.isArray(lang)) {
       lang.forEach((l) => {
-        payload += `&languages%5B%5D=${typeof l === "string" ? l : l.value}`;
+        payload += `&languages%5B%5D=${encodeURIComponent(
+          typeof l === "string" ? l : l.value
+        )}`;
       });
     }
 
     if (extensions && Array.isArray(extensions)) {
       extensions.forEach((ext) => {
-        payload += `&extensions%5B%5D=${
+        payload += `&extensions%5B%5D=${encodeURIComponent(
           typeof ext === "string" ? ext : ext.value
-        }`;
+        )}`;
       });
     }
 
@@ -179,6 +221,12 @@ class AsyncZlib {
     return paginator;
   }
 
+  /**
+   * Get a book by its ID.
+   * @param {string} id - The book ID.
+   * @returns {Promise<BookItem>} The book item.
+   * @throws {NoIdError} If ID is not provided.
+   */
   async getById(id = "") {
     if (!id) throw new NoIdError();
 
@@ -188,6 +236,22 @@ class AsyncZlib {
     return book;
   }
 
+  /**
+   * Perform a full-text search.
+   * @param {string} q - The search query.
+   * @param {boolean} [exact=false] - Exact match.
+   * @param {boolean} [phrase=false] - Search as a phrase.
+   * @param {boolean} [words=false] - Search for words.
+   * @param {number|null} [fromYear=null] - Start year.
+   * @param {number|null} [toYear=null] - End year.
+   * @param {string[]} [lang=[]] - List of languages.
+   * @param {string[]} [extensions=[]] - List of extensions.
+   * @param {number} [count=10] - Number of results per page.
+   * @returns {Promise<SearchPaginator>} The paginator.
+   * @throws {NoProfileError} If not logged in.
+   * @throws {EmptyQueryError} If query is empty.
+   * @throws {Error} If neither 'phrase' nor 'words' is specified.
+   */
   async fullTextSearch(
     q = "",
     exact = false,
@@ -225,15 +289,17 @@ class AsyncZlib {
 
     if (lang && Array.isArray(lang)) {
       lang.forEach((l) => {
-        payload += `&languages%5B%5D=${typeof l === "string" ? l : l.value}`;
+        payload += `&languages%5B%5D=${encodeURIComponent(
+          typeof l === "string" ? l : l.value
+        )}`;
       });
     }
 
     if (extensions && Array.isArray(extensions)) {
       extensions.forEach((ext) => {
-        payload += `&extensions%5B%5D=${
+        payload += `&extensions%5B%5D=${encodeURIComponent(
           typeof ext === "string" ? ext : ext.value
-        }`;
+        )}`;
       });
     }
 

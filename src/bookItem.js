@@ -3,12 +3,20 @@
 const { JSDOM } = require("jsdom");
 const logger = require("./logger");
 const { ParseError } = require("./exception");
-const config = require("./config"); // Import centralized config
+const config = require("./config");
 
+/**
+ * Class representing a book item.
+ */
 class BookItem {
+  /**
+   * Create a BookItem instance.
+   * @param {Function} request - The request function.
+   * @param {string} mirror - The mirror URL.
+   */
   constructor(request, mirror) {
     this.__r = request;
-    this.mirror = mirror || config.ZLIB_DOMAIN; // Default to config if mirror not provided
+    this.mirror = mirror || config.ZLIB_DOMAIN;
     this.parsed = null;
     this.url = "";
     this.name = "";
@@ -18,6 +26,8 @@ class BookItem {
 
   /**
    * Fetches the book details and download URLs.
+   * @returns {Promise<Object>} The parsed book details.
+   * @throws {ParseError} If parsing fails.
    */
   async fetch() {
     if (!this.url) {
@@ -120,6 +130,7 @@ class BookItem {
 
   /**
    * Extracts the book ID from the URL.
+   * @returns {string|null} The book ID or null if not found.
    */
   extractBookId() {
     try {
@@ -145,7 +156,7 @@ class BookItem {
   /**
    * Fetches available download formats and constructs download URLs.
    * @param {string} bookId - The ID of the book.
-   * @returns {Array} - Array of download URLs.
+   * @returns {Promise<Array>} - Array of download URLs.
    */
   async getDownloadUrls(bookId) {
     const apiUrl = `${this.mirror}/papi/book/${bookId}/formats`;
@@ -153,7 +164,7 @@ class BookItem {
       logger.info(`Fetching download formats from ${apiUrl}`);
       const response = await this.__r(apiUrl);
 
-      // Assuming response is a JSON string. If it's already parsed, skip JSON.parse
+      // Assuming response is a JSON string.
       let data;
       if (typeof response === "string") {
         data = JSON.parse(response);

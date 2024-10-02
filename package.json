@@ -5,10 +5,20 @@
   "scripts": {
     "test": "node test/test.js"
   },
-  "keywords": [],
+  "keywords": [
+    "zlibrary",
+    "books",
+    "library",
+    "api",
+    "nodejs"
+  ],
   "author": "",
-  "license": "ISC",
-  "description": "",
+  "license": "MIT",
+  "description": "A Node.js library for interacting with ZLibrary.",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beaini/zlibrary-nodejs"
+  },
   "dependencies": {
     "axios": "^1.7.7",
     "dotenv": "^16.4.5",
