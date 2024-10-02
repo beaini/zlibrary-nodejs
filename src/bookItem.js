@@ -148,7 +148,7 @@ class BookItem {
    * @returns {Array} - Array of download URLs.
    */
   async getDownloadUrls(bookId) {
-    const apiUrl = `https://z-library.do/papi/book/${bookId}/formats`;
+    const apiUrl = `${this.mirror}/papi/book/${bookId}/formats`;
     try {
       logger.info(`Fetching download formats from ${apiUrl}`);
       const response = await this.__r(apiUrl);
@@ -174,7 +174,7 @@ class BookItem {
           id: format.id,
           extension: format.extension,
           filesize: format.filesizeString,
-          url: `https://z-library.do${href}`,
+          url: `${this.mirror}/${href}`,
         };
       });
 
