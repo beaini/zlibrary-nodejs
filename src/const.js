@@ -50,7 +50,6 @@ const Language = Object.freeze({
   UKRAINIAN: "ukrainian",
   URDU: "urdu",
   VIETNAMESE: "vietnamese",
-  // ... (Include all other languages as per your Python code)
 });
 
 module.exports = {

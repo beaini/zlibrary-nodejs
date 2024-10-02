@@ -3,18 +3,22 @@
 const { JSDOM } = require("jsdom");
 const logger = require("./logger");
 const { ParseError } = require("./exception");
+const config = require("./config"); // Import centralized config
 
 class BookItem {
   constructor(request, mirror) {
     this.__r = request;
-    this.mirror = mirror;
+    this.mirror = mirror || config.ZLIB_DOMAIN; // Default to config if mirror not provided
     this.parsed = null;
     this.url = "";
     this.name = "";
     this.authors = [];
-    // Initialize other properties as needed
+    this.downloadUrls = [];
   }
 
+  /**
+   * Fetches the book details and download URLs.
+   */
   async fetch() {
     if (!this.url) {
       throw new ParseError("Book URL is not set.");
@@ -100,32 +104,86 @@ class BookItem {
       parsed.rating = ratingElem.textContent.replace(/\s+/g, "").trim();
     }
 
-    const downloadButton = wrap.querySelector(".addDownloadedBook .premiumBtn");
-
-    if (downloadButton) {
-      // Print the HTML content inside the selected element
-      logger.info(downloadButton.innerHTML);
-
-      // OR, if you want to print the full element including itself
-      logger.info(downloadButton.outerHTML);
+    // Fetch download URLs using the new API
+    const bookId = this.extractBookId();
+    if (bookId) {
+      const downloadUrls = await this.getDownloadUrls(bookId);
+      parsed.downloadUrls = downloadUrls;
     } else {
-      logger.warn("Download button not found.");
-    }
-    if (downloadButton) {
-      const downloadText = downloadButton.textContent.trim();
-      if (downloadText.includes("unavailable")) {
-        parsed.download_url = "Unavailable (use tor to download)";
-      } else {
-        parsed.download_url = `${this.mirror}${downloadButton.getAttribute(
-          "href"
-        )}`;
-      }
-    } else {
-      throw new ParseError("Could not parse the download link.");
+      logger.warn("Book ID not found. Cannot fetch download URLs.");
+      parsed.downloadUrls = [];
     }
 
     this.parsed = parsed;
     return parsed;
+  }
+
+  /**
+   * Extracts the book ID from the URL.
+   */
+  extractBookId() {
+    try {
+      const urlObj = new URL(this.url);
+      const pathSegments = urlObj.pathname
+        .split("/")
+        .filter((segment) => segment);
+      const bookIndex = pathSegments.indexOf("book");
+      if (bookIndex !== -1 && pathSegments.length > bookIndex + 1) {
+        const bookId = pathSegments[bookIndex + 1];
+        logger.debug(`Extracted book ID: ${bookId}`);
+        return bookId;
+      } else {
+        logger.error("Book ID not found in URL.");
+        return null;
+      }
+    } catch (error) {
+      logger.error("Failed to extract book ID from URL.");
+      return null;
+    }
+  }
+
+  /**
+   * Fetches available download formats and constructs download URLs.
+   * @param {string} bookId - The ID of the book.
+   * @returns {Array} - Array of download URLs.
+   */
+  async getDownloadUrls(bookId) {
+    const apiUrl = `https://z-library.do/papi/book/${bookId}/formats`;
+    try {
+      logger.info(`Fetching download formats from ${apiUrl}`);
+      const response = await this.__r(apiUrl);
+
+      // Assuming response is a JSON string. If it's already parsed, skip JSON.parse
+      let data;
+      if (typeof response === "string") {
+        data = JSON.parse(response);
+      } else {
+        data = response;
+      }
+
+      if (data.success !== 1 || !data.books || !Array.isArray(data.books)) {
+        throw new ParseError("Invalid response structure from formats API.");
+      }
+
+      const downloadUrls = data.books.map((format) => {
+        // Ensure href does not have leading slash
+        const href = format.href.startsWith("/")
+          ? format.href.slice(1)
+          : format.href;
+        return {
+          id: format.id,
+          extension: format.extension,
+          filesize: format.filesizeString,
+          url: `https://z-library.do${href}`,
+        };
+      });
+
+      logger.info(`Found ${downloadUrls.length} download formats.`);
+      return downloadUrls;
+    } catch (error) {
+      logger.error(`Failed to fetch download URLs: ${error.message}`);
+      return [];
+    }
   }
 }
 

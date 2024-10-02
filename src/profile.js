@@ -6,6 +6,7 @@ const logger = require("./logger");
 const { DownloadsPaginator } = require("./abstract");
 const { Booklists } = require("./booklists");
 const { OrderOptions } = require("./const");
+const config = require("./config"); // Import centralized config
 
 class ZlibProfile {
   constructor(request, cookies, mirror, domain) {
