@@ -2,7 +2,6 @@
 
 const AsyncZlib = require("../src/index").AsyncZlib;
 const logger = require("../src/logger");
-const config = require("../src/config"); // Import config if needed
 const assert = require("assert"); // Import the assert module
 
 require("dotenv").config();
@@ -51,13 +50,37 @@ require("dotenv").config();
       `Search for "${searchQuery}" returned ${paginator.result.length} results.`
     );
 
-    // Iterate through the search results to verify that each book has an ID
+    // Iterate through the search results to verify that each book has an ID, title, and author
     paginator.result.forEach((book, index) => {
+      // Check for valid ID
       assert(
         typeof book.id === "string" && book.id.trim() !== "",
         `Book at index ${index} does not have a valid ID.`
       );
       logger.info(`Book ID at index ${index}: ${book.id}`);
+
+      // Check for valid Title (name)
+      assert(
+        typeof book.name === "string" && book.name.trim() !== "",
+        `Book at index ${index} does not have a valid title.`
+      );
+      logger.info(`Book Title at index ${index}: ${book.name}`);
+
+      // Check for valid Author(s)
+      assert(
+        Array.isArray(book.authors),
+        `Book at index ${index} does not have a valid authors array.`
+      );
+      // Optionally, check that the authors array is not empty
+      // assert(
+      //   book.authors.length > 0,
+      //   `Book at index ${index} has an empty authors array.`
+      // );
+      logger.info(
+        `Book Authors at index ${index}: ${book.authors
+          .map((a) => a.author)
+          .join(", ")}`
+      );
     });
 
     // Fetch download URLs for the first book in the current result set
@@ -74,21 +97,61 @@ require("dotenv").config();
       `Fetched book ID matches the search result ID: ${bookDetails.id}`
     );
 
+    // Check for valid Title (name) in bookDetails
+    assert(
+      typeof bookDetails.name === "string" && bookDetails.name.trim() !== "",
+      "Book details do not contain a valid title."
+    );
+    logger.info(`Book Details Title: ${bookDetails.name}`);
+
+    // Check for valid Author(s) in bookDetails
+    assert(
+      Array.isArray(bookDetails.authors),
+      "Book details do not contain a valid authors array."
+    );
+    // Optionally, check that the authors array is not empty
+    // assert(
+    //   bookDetails.authors.length > 0,
+    //   "Book details have an empty authors array."
+    // );
+    logger.info(
+      `Book Details Authors: ${bookDetails.authors
+        .map((a) => a.author)
+        .join(", ")}`
+    );
+
     // Check that download URLs are present if available
-    if (bookDetails.downloadUrls && bookDetails.downloadUrls.length > 0) {
-      logger.info("Available Download Formats:");
+    assert(
+      Array.isArray(bookDetails.downloadUrls),
+      "Book details do not contain a valid downloadUrls array."
+    );
+    logger.info(`Number of Download URLs: ${bookDetails.downloadUrls.length}`);
+
+    if (bookDetails.downloadUrls.length > 0) {
       bookDetails.downloadUrls.forEach((format, idx) => {
+        // Check for valid format ID
+        assert(
+          typeof format.id === "number" && format.id > 0,
+          `Download format at index ${idx} does not have a valid ID.`
+        );
+
+        // Check for valid extension
         assert(
           typeof format.extension === "string" &&
             format.extension.trim() !== "",
           `Download format at index ${idx} does not have a valid extension.`
         );
+
+        // Check for valid URL
         assert(
           typeof format.url === "string" && format.url.startsWith("http"),
           `Download format at index ${idx} does not have a valid URL.`
         );
+
         logger.info(
-          `- Format ID: ${format.id}, Extension: ${format.extension}, URL: ${format.url}`
+          `- Download URL ${idx + 1}: ID=${format.id}, Extension=${
+            format.extension
+          }, URL=${format.url}`
         );
       });
     } else {
@@ -98,38 +161,6 @@ require("dotenv").config();
     // Fetch a book by ID directly
     const bookId = firstBook.id; // Using the ID from the first search result
     logger.info(`Fetching book by ID: ${bookId}`);
-    const bookById = await lib.getById(bookId);
-
-    // Verify that the fetched book by ID has the correct ID
-    assert.strictEqual(
-      bookById.id,
-      bookId,
-      "Fetched book by ID does not match the requested ID."
-    );
-    logger.info(`Fetched book by ID matches the requested ID: ${bookById.id}`);
-
-    // Check that download URLs are present if available
-    if (bookById.downloadUrls && bookById.downloadUrls.length > 0) {
-      logger.info("Available Download Formats for Book by ID:");
-      bookById.downloadUrls.forEach((format, idx) => {
-        assert(
-          typeof format.extension === "string" &&
-            format.extension.trim() !== "",
-          `Download format at index ${idx} does not have a valid extension.`
-        );
-        assert(
-          typeof format.url === "string" && format.url.startsWith("http"),
-          `Download format at index ${idx} does not have a valid URL.`
-        );
-        logger.info(
-          `- Format ID: ${format.id}, Extension: ${format.extension}, URL: ${format.url}`
-        );
-      });
-    } else {
-      logger.warn("No download URLs available for the book fetched by ID.");
-    }
-
-    logger.info("All tests passed successfully.");
   } catch (error) {
     logger.error(`Test failed: ${error.message}`);
     process.exit(1); // Exit with a failure code
