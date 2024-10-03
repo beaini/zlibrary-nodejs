@@ -1,9 +1,10 @@
 {
   "name": "zlibrary-nodejs",
-  "version": "1.0.0",
-  "main": "index.js",
+  "version": "1.0.1",
+  "main": "src/index.js",
   "scripts": {
-    "test": "node test/test.js"
+    "test": "node test/test.js",
+    "test:debug": "node --inspect test/test.js"
   },
   "keywords": [
     "zlibrary",
@@ -26,5 +27,8 @@
     "jsdom": "^25.0.1",
     "socks-proxy-agent": "^8.0.4",
     "winston": "^3.14.2"
-  }
+  },
+  "files": [
+    "src/**/*"
+  ]
 }

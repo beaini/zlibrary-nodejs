@@ -117,6 +117,7 @@ class BookItem {
     // Fetch download URLs using the new API
     const bookId = this.extractBookId();
     if (bookId) {
+      parsed.id = bookId;
       const downloadUrls = await this.getDownloadUrls(bookId);
       parsed.downloadUrls = downloadUrls;
     } else {

@@ -61,23 +61,33 @@ class SearchPaginator {
     bookList.forEach((bookElem, idx) => {
       const js = new BookItem(this.__r, this.mirror);
 
-      const cover = bookElem.querySelector(".itemCoverWrapper");
-      if (!cover) {
+      const coverWrapper = bookElem.querySelector(".itemCoverWrapper");
+      if (!coverWrapper) {
         logger.debug(`Failure to parse ${idx}-th book at url ${this.__url}`);
         return;
       }
 
-      js.id = cover.getAttribute("data-book_id");
-      js.isbn = cover.getAttribute("data-isbn");
+      // Select the <z-cover> element within the cover wrapper
+      const zcover = coverWrapper.querySelector("z-cover");
+      if (!zcover) {
+        logger.debug(
+          `Failure to find <z-cover> in ${idx}-th book at url ${this.__url}`
+        );
+        return;
+      }
 
-      const bookUrlElem = cover.querySelector("a");
+      // Extract the 'id' and 'isbn' attributes from <z-cover>
+      js.id = zcover.getAttribute("id");
+      js.isbn = zcover.getAttribute("isbn");
+
+      const bookUrlElem = zcover.querySelector("a");
       if (bookUrlElem) {
         js.url = `${this.mirror}${bookUrlElem.getAttribute("href")}`;
       }
 
-      const img = cover.querySelector("img");
+      const img = zcover.querySelector("img");
       if (img) {
-        js.cover = img.getAttribute("data-src");
+        js.cover = img.getAttribute("data-src") || img.getAttribute("src");
       }
 
       const dataTable = bookElem.querySelector("table");
