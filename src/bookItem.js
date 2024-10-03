@@ -5,6 +5,7 @@ const { JSDOM } = require("jsdom");
 const logger = require("./logger");
 const { ParseError } = require("./exception");
 const config = require("./config");
+const { getAxiosInstance } = require("./axiosInstance");
 
 /**
  * Class representing a book item.
@@ -405,16 +406,11 @@ class BookItem {
 
     while (attempt < MAX_RETRIES) {
       try {
-        const response = await axios.get(downloadUrl, {
+        const axiosInstance = getAxiosInstance(); // Get the shared Axios instance
+        const response = await axiosInstance.get(downloadUrl, {
           responseType: "arraybuffer", // Ensures binary data is returned
           headers: {
             "User-Agent": "Mozilla/5.0", // Some servers require a User-Agent header
-            // Include cookies from the current session if necessary
-            Cookie: this.cookies
-              ? Object.entries(this.cookies)
-                  .map(([key, value]) => `${key}=${value}`)
-                  .join("; ")
-              : "",
           },
           timeout: 30000, // 30 seconds timeout; adjust as needed
           maxRedirects: 5, // Handle up to 5 redirects
@@ -425,12 +421,8 @@ class BookItem {
 
         // Check for successful response
         if (response.status !== 200) {
-          // Log response body for debugging
-          const responseBody = response.data
-            .toString("utf-8")
-            .substring(0, 500);
-          logger.error(`Unexpected response body: ${responseBody}`);
           const errorMsg = `Failed to download file. HTTP Status Code: ${response.status}`;
+          logger.error(errorMsg);
           throw new Error(errorMsg);
         }
 
@@ -447,11 +439,6 @@ class BookItem {
         if (expectedContentType && !contentType.includes(expectedContentType)) {
           const errorMsg = `Unexpected content type: ${contentType}. Expected: ${expectedContentType}`;
           logger.error(errorMsg);
-          // Log response body for further debugging
-          const responseBody = response.data
-            .toString("utf-8")
-            .substring(0, 500);
-          logger.error(`Response Body: ${responseBody}`);
           throw new Error(errorMsg);
         }
 

@@ -2,98 +2,38 @@
 
 const { GET_request, POST_request } = require("./util");
 const {
-  EmptyQueryError,
-  ProxyNotMatchError,
-  NoProfileError,
   NoDomainError,
+  EmptyQueryError,
+  NoProfileError,
   NoIdError,
-  ParseError, // Added missing import
 } = require("./exception");
-const logger = require("./logger");
+const { createAxiosInstance, updateCookies } = require("./axiosInstance");
 const ZlibProfile = require("./profile");
-const { SearchPaginator } = require("./abstract");
+const SearchPaginator = require("./abstract").SearchPaginator;
 const BookItem = require("./bookItem");
-const config = require("./config");
+const logger = require("./logger");
+const config = require("./config"); // Import centralized config
 
-/**
- * Class representing the asynchronous interface to ZLibrary.
- */
 class AsyncZlib {
-  /**
-   * Create an AsyncZlib instance.
-   * @param {Object} options - Configuration options.
-   * @param {boolean} [options.onion=false] - Use onion domains.
-   * @param {string[]} [options.proxyList=[]] - List of proxies.
-   * @param {boolean} [options.disableSemaphore=false] - Disable semaphore.
-   * @param {Object} [options.customDomains={}] - Custom domains.
-   * @throws {ProxyNotMatchError} If proxyList is not an array.
-   * @throws {Error} If onion is true and proxyList is empty.
-   */
   constructor(options = {}) {
-    const {
-      onion = false,
-      proxyList = [],
-      disableSemaphore = false,
-      customDomains = {},
-    } = options;
+    this.proxyList = options.proxyList || [];
+    this.cookies = {}; // Initialize cookies as an empty object
+    this.domains = options.customDomains || require("./config");
+    this.onion = options.onion || false;
 
-    if (proxyList && !Array.isArray(proxyList)) {
-      throw new ProxyNotMatchError();
-    }
+    // Set the appropriate domains based on whether Tor is used
+    this.domain = this.onion
+      ? this.domains.ZLIB_TOR_DOMAIN
+      : this.domains.ZLIB_DOMAIN;
+    this.loginDomain = this.onion
+      ? this.domains.LOGIN_TOR_DOMAIN
+      : this.domains.LOGIN_DOMAIN;
+    this.mirror = this.domain;
 
-    this.semaphore = !disableSemaphore;
-    this.onion = onion;
-    this.proxyList = proxyList;
-
-    // Merge custom domains with default config
-    this.domains = { ...config, ...customDomains };
-
-    if (onion) {
-      this.loginDomain = this.domains.LOGIN_TOR_DOMAIN;
-      this.domain = this.domains.ZLIB_TOR_DOMAIN;
-      this.mirror = this.domain;
-
-      if (!proxyList || proxyList.length === 0) {
-        throw new Error(
-          "Tor proxy must be set to route through onion domains. Set up a tor service and use: onion=true, proxyList=['socks5://127.0.0.1:9050']"
-        );
-      }
-    } else {
-      this.loginDomain = this.domains.LOGIN_DOMAIN;
-      this.domain = this.domains.ZLIB_DOMAIN;
-      this.mirror = this.domains.ZLIB_DOMAIN;
-    }
-
-    this.cookies = null;
-    this.profile = null;
+    // Create the shared Axios instance with initial cookies and proxy settings
+    createAxiosInstance(this.proxyList, this.cookies);
   }
 
-  /**
-   * Internal method to make a GET request.
-   * @param {string} url - The URL to request.
-   * @param {boolean} [expectJson=false] - Whether to parse the response as JSON.
-   * @returns {Promise<any>} The response data.
-   * @throws {ParseError} If JSON parsing fails.
-   */
-  async _r(url, expectJson = false) {
-    const response = await GET_request(url, this.cookies, this.proxyList);
-    if (expectJson && typeof response === "string") {
-      try {
-        return JSON.parse(response);
-      } catch (error) {
-        throw new ParseError("Failed to parse JSON response.");
-      }
-    }
-    return response;
-  }
-
-  /**
-   * Login to ZLibrary.
-   * @param {string} email - The email address.
-   * @param {string} password - The password.
-   * @returns {Promise<ZlibProfile>} The user profile.
-   * @throws {Error} If no working domain is found.
-   */
   async login(email, password) {
     const data = new URLSearchParams({
       isModal: "True",
@@ -106,36 +46,32 @@ class AsyncZlib {
       gg_json_mode: "1",
     });
 
-    const [resp, setCookies] = await POST_request(
-      this.loginDomain,
-      data,
-      this.proxyList
-    );
+    const [resp, setCookies] = await POST_request(this.loginDomain, data);
 
     // Process response and set cookies
-    this.cookies = {};
     setCookies.forEach((cookieStr) => {
       const [cookiePair] = cookieStr.split(";");
       const [key, value] = cookiePair.split("=");
-      this.cookies[key] = value;
+      this.cookies[key.trim()] = value.trim();
     });
+
+    // Update the shared Axios instance with the new cookies
+    updateCookies(this.cookies);
 
     logger.debug(`Set cookies: ${JSON.stringify(this.cookies)}`);
 
     if (this.onion) {
       const url = `${this.domain}/?remix_userkey=${this.cookies["remix_userkey"]}&remix_userid=${this.cookies["remix_userid"]}`;
-      const [_, moreCookies] = await GET_request(
-        url,
-        this.cookies,
-        this.proxyList,
-        true
-      );
+      const [_, moreCookies] = await GET_request(url);
 
       moreCookies.forEach((cookieStr) => {
         const [cookiePair] = cookieStr.split(";");
         const [key, value] = cookiePair.split("=");
-        this.cookies[key] = value;
+        this.cookies[key.trim()] = value.trim();
       });
+
+      // Update the shared Axios instance with the new cookies
+      updateCookies(this.cookies);
 
       logger.debug(`Updated cookies: ${JSON.stringify(this.cookies)}`);
       logger.info(`Set working mirror: ${this.mirror}`);
@@ -147,36 +83,29 @@ class AsyncZlib {
       }
     }
 
-    this.profile = new ZlibProfile(
-      this._r.bind(this),
-      this.cookies,
-      this.mirror,
-      this.domain
-    );
+    this.profile = new ZlibProfile(this.cookies, this.mirror, this.domain);
     return this.profile;
   }
 
-  /**
-   * Logout from ZLibrary.
-   */
-  async logout() {
-    this.cookies = null;
-    this.profile = null;
+  // Modify the request function to use the shared Axios instance
+  async _r(url, expectJson = false) {
+    try {
+      const response = await GET_request(url, expectJson);
+      return response;
+    } catch (error) {
+      throw error;
+    }
   }
 
-  /**
-   * Search for books.
-   * @param {string} q - The search query.
-   * @param {boolean} [exact=false] - Exact match.
-   * @param {number|null} [fromYear=null] - Start year.
-   * @param {number|null} [toYear=null] - End year.
-   * @param {string[]} [lang=[]] - List of languages.
-   * @param {string[]} [extensions=[]] - List of extensions.
-   * @param {number} [count=10] - Number of results per page.
-   * @returns {Promise<SearchPaginator>} The paginator.
-   * @throws {NoProfileError} If not logged in.
-   * @throws {EmptyQueryError} If query is empty.
-   */
+  async getById(id = "") {
+    if (!id) throw new NoIdError();
+
+    const book = new BookItem(this._r.bind(this), this.mirror);
+    book.url = `${this.mirror}/book/${id}`;
+    await book.fetch(); // Ensure fetch is awaited to populate downloadUrls
+    return book;
+  }
+
   async search(
     q = "",
     exact = false,
@@ -230,9 +159,9 @@ class AsyncZlib {
   async getById(id = "") {
     if (!id) throw new NoIdError();
 
-    const book = new BookItem(this._r.bind(this), this.mirror);
+    const book = new BookItem(this._r.bind(this), this.mirror); // No need to pass cookies
     book.url = `${this.mirror}/book/${id}`;
-    await book.fetch(); // Ensure fetch is awaited to populate downloadUrls
+    await book.fetch(); // Fetch populates downloadUrls
     return book;
   }
 

@@ -9,9 +9,8 @@ const { OrderOptions } = require("./const");
 const config = require("./config"); // Import centralized config
 
 class ZlibProfile {
-  constructor(request, cookies, mirror, domain) {
+  constructor(request, mirror, domain) {
     this.__r = request;
-    this.cookies = cookies;
     this.mirror = mirror;
     this.domain = domain;
   }

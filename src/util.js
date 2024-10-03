@@ -1,8 +1,7 @@
 // src/util.js
 
 const axios = require("axios");
-const HttpsProxyAgent = require("https-proxy-agent");
-const SocksProxyAgent = require("socks-proxy-agent");
+const { getAxiosInstance } = require("./axiosInstance");
 const { LoopError } = require("./exception");
 const logger = require("./logger");
 
@@ -14,52 +13,22 @@ const HEADERS = {
 const TIMEOUT = 180000; // 180 seconds
 const HEAD_TIMEOUT = 4000; // 4 seconds
 
-function createAxiosInstance(proxyList, timeout) {
-  const options = {
-    headers: HEADERS,
-    timeout,
-  };
-
-  if (proxyList && proxyList.length > 0) {
-    const proxyUrl = proxyList[0];
-    if (proxyUrl.startsWith("socks")) {
-      options.httpAgent = new SocksProxyAgent(proxyUrl);
-      options.httpsAgent = new SocksProxyAgent(proxyUrl);
-      options.proxy = false;
-    } else {
-      options.httpAgent = new HttpsProxyAgent(proxyUrl);
-      options.httpsAgent = new HttpsProxyAgent(proxyUrl);
-      options.proxy = false;
-    }
-  }
-
-  return axios.create(options);
-}
-
-async function GET_request(
-  url,
-  cookies = {},
-  proxyList = [],
-  saveCookies = false
-) {
+async function GET_request(url, expectJson = false) {
   try {
-    const instance = createAxiosInstance(proxyList, TIMEOUT);
-
-    if (cookies && Object.keys(cookies).length > 0) {
-      instance.defaults.headers.Cookie = Object.entries(cookies)
-        .map(([key, value]) => `${key}=${value}`)
-        .join("; ");
-    }
-
+    const instance = getAxiosInstance();
     logger.info(`GET ${url}`);
 
     const response = await instance.get(url);
 
-    if (saveCookies) {
-      return [response.data, response.headers["set-cookie"] || []];
-    } else {
-      return response.data;
+    if (expectJson && typeof response.data === "string") {
+      try {
+        return JSON.parse(response.data);
+      } catch (error) {
+        throw new ParseError("Failed to parse JSON response.");
+      }
     }
+
+    return response.data;
   } catch (error) {
     if (axios.isCancel(error)) {
       throw new LoopError(
@@ -71,9 +40,9 @@ async function GET_request(
   }
 }
 
-async function POST_request(url, data, proxyList = []) {
+async function POST_request(url, data) {
   try {
-    const instance = createAxiosInstance(proxyList, TIMEOUT);
+    const instance = getAxiosInstance();
     logger.info(`POST ${url}`);
     const response = await instance.post(url, data);
     return [response.data, response.headers["set-cookie"] || []];
@@ -88,9 +57,9 @@ async function POST_request(url, data, proxyList = []) {
   }
 }
 
-async function HEAD_request(url, proxyList = []) {
+async function HEAD_request(url) {
   try {
-    const instance = createAxiosInstance(proxyList, HEAD_TIMEOUT);
+    const instance = getAxiosInstance();
     logger.info(`Checking connectivity of ${url}...`);
     const response = await instance.head(url);
     return response.status;
