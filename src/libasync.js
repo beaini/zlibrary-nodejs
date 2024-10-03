@@ -29,7 +29,7 @@ class AsyncZlib {
       ? this.domains.LOGIN_TOR_DOMAIN
       : this.domains.LOGIN_DOMAIN;
     this.mirror = this.domain;
-
+    this.bookIdToUrlMap = {};
     // Create the shared Axios instance with initial cookies and proxy settings
     createAxiosInstance(this.proxyList, this.cookies);
   }
@@ -87,7 +87,7 @@ class AsyncZlib {
     return this.profile;
   }
 
-  // Modify the request function to use the shared Axios instance
+  // Add the _r method
   async _r(url, expectJson = false) {
     try {
       const response = await GET_request(url, expectJson);
@@ -95,15 +95,6 @@ class AsyncZlib {
     } catch (error) {
       throw error;
     }
-  }
-
-  async getById(id = "") {
-    if (!id) throw new NoIdError();
-
-    const book = new BookItem(this._r.bind(this), this.mirror);
-    book.url = `${this.mirror}/book/${id}`;
-    await book.fetch(); // Ensure fetch is awaited to populate downloadUrls
-    return book;
   }
 
   async search(
@@ -151,7 +142,7 @@ class AsyncZlib {
   }
 
   /**
-   * Get a book by its ID.
+   * Get a book by its ID using the /papi/book/:id/formats endpoint.
    * @param {string} id - The book ID.
    * @returns {Promise<BookItem>} The book item.
    * @throws {NoIdError} If ID is not provided.
@@ -159,9 +150,54 @@ class AsyncZlib {
   async getById(id = "") {
     if (!id) throw new NoIdError();
 
-    const book = new BookItem(this._r.bind(this), this.mirror); // No need to pass cookies
-    book.url = `${this.mirror}/book/${id}`;
-    await book.fetch(); // Fetch populates downloadUrls
+    let bookUrl = this.bookIdToUrlMap[id];
+    if (!bookUrl) {
+      logger.warn(
+        `URL for book ID ${id} not found in cache. Attempting to fetch via API.`
+      );
+
+      // Attempt to fetch book details via /papi/book/:id/formats
+      const formatsUrl = `${this.mirror}/papi/book/${id}/formats`;
+      let formatsData;
+      try {
+        formatsData = await this._r(formatsUrl, true);
+      } catch (error) {
+        logger.error(
+          `Failed to fetch formats for book ID ${id}: ${error.message}`
+        );
+        throw error;
+      }
+
+      if (
+        !formatsData.success ||
+        !formatsData.books ||
+        !Array.isArray(formatsData.books)
+      ) {
+        throw new ParseError("Invalid response structure from formats API.");
+      }
+
+      // Create a new BookItem instance
+      const book = new BookItem(this._r.bind(this), this.mirror);
+      book.id = id;
+      book.downloadUrls = formatsData.books.map((format) => ({
+        id: format.id,
+        extension: format.extension,
+        filesize: format.filesizeString,
+        url: `${this.mirror}/${
+          format.href.startsWith("/") ? format.href.slice(1) : format.href
+        }`,
+      }));
+
+      // Optionally, set other properties if available
+      // book.name = formatsData.title || "";
+      // book.authors = formatsData.authors || [];
+
+      return book;
+    }
+
+    const book = new BookItem(this._r.bind(this), this.mirror);
+    book.url = bookUrl;
+    await book.fetch(); // This should work as the URL is correct
     return book;
   }
 
